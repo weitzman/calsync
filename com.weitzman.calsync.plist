@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.weitzman.calsync</string>
+
+	<!-- Runs ~/bin/calsync-mirror, which invokes ~/bin/calsync once per
+	     direction. launchd does not expand "~" or "$HOME" inside
+	     ProgramArguments, so bash is used purely to resolve the path — that
+	     keeps a username out of this file.
+
+	     Calendar access is TCC-gated. Launched this way there is no Shortcuts
+	     app to inherit an authorisation from, so ~/bin/calsync needs its own
+	     grant: approve the prompt when running it from Terminal, and if launchd
+	     runs still report no access, add it under System Settings > Privacy &
+	     Security > Full Disk Access. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/bin/bash</string>
+		<string>-c</string>
+		<string>exec "$HOME/bin/calsync-mirror"</string>
+	</array>
+
+	<!-- The two calendar titles, and any calsync setting worth pinning.
+	     These live here rather than in the repository so the checked-in copy
+	     carries no personal detail — edit the installed copy in
+	     ~/Library/LaunchAgents, not this one. -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>CAL_A</key>
+		<string>Work</string>
+		<key>CAL_B</key>
+		<string>Personal</string>
+		<key>MIRROR_TITLE</key>
+		<string>Busy</string>
+		<key>HORIZON_DAYS</key>
+		<string>14</string>
+		<key>SKIP_DECLINED</key>
+		<string>1</string>
+	</dict>
+
+	<!-- Every 10 minutes. launchd also fires once immediately at load. -->
+	<key>StartInterval</key>
+	<integer>600</integer>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- Don't stack up runs if one is slow. -->
+	<key>AbandonProcessGroup</key>
+	<false/>
+
+	<key>ProcessType</key>
+	<string>Background</string>
+
+	<key>StandardOutPath</key>
+	<string>/tmp/calsync.log</string>
+	<key>StandardErrorPath</key>
+	<string>/tmp/calsync.err.log</string>
+</dict>
+</plist>
