@@ -20,6 +20,11 @@
 // Env vars:
 //   SRC_CAL       source calendar title            (default "Calendar")
 //   DST_CAL       destination calendar title       (default "Personal")
+//   SRC_CAL_ID    source calendar identifier; when set, the title is ignored.
+//                 Identifiers survive renames and duplicate titles — prefer
+//                 them for anything scheduled. Run with a wrong title to list
+//                 every calendar with its id.
+//   DST_CAL_ID    likewise for the destination
 //   MIRROR_TITLE  title used for copies            (default "Busy")
 //   HORIZON_DAYS  days to look ahead               (default 14)
 //   SKIP_DECLINED 1 to skip events you declined    (default 1)
@@ -50,6 +55,9 @@ func envBool(_ k: String, _ d: Bool) -> Bool {
 
 let SRC_CAL       = envStr("SRC_CAL", "Calendar")
 let DST_CAL       = envStr("DST_CAL", "Personal")
+// When set, these override the titles entirely (see resolveCalendar).
+let SRC_CAL_ID    = envStr("SRC_CAL_ID", "")
+let DST_CAL_ID    = envStr("DST_CAL_ID", "")
 let MIRROR_TITLE  = envStr("MIRROR_TITLE", "Busy")
 let HORIZON_DAYS  = max(1, envInt("HORIZON_DAYS", 14))
 let SKIP_DECLINED = envBool("SKIP_DECLINED", true)
@@ -141,19 +149,39 @@ func findCalendar(_ title: String) -> EKCalendar? {
     return allCalendars.first { $0.title.caseInsensitiveCompare(title) == .orderedSame }
 }
 
-guard let source = findCalendar(SRC_CAL) else {
-    die("source calendar \"\(SRC_CAL)\" not found. Available: "
-        + allCalendars.map { "\"\($0.title)\"" }.joined(separator: ", "))
+// Titles are neither stable nor unique: Exchange reverts renames of its default
+// calendar, and two accounts can each have a "Calendar". An identifier survives
+// both, so when one is given it is the only thing consulted — a title match is
+// not an acceptable fallback for a stale id, because with duplicate titles it
+// could silently bind the wrong calendar, and an empty or wrong source is how
+// every copy gets deleted. Identifiers do die with an account remove/re-add;
+// the error prints the current ids for re-pinning.
+func availableList() -> String {
+    allCalendars.map { "\"\($0.title)\" (\($0.source.title), id \($0.calendarIdentifier))" }
+        .joined(separator: ", ")
 }
-guard let dest = findCalendar(DST_CAL) else {
-    die("destination calendar \"\(DST_CAL)\" not found. Available: "
-        + allCalendars.map { "\"\($0.title)\"" }.joined(separator: ", "))
+
+func resolveCalendar(id: String, title: String, role: String) -> EKCalendar {
+    if !id.isEmpty {
+        guard let c = allCalendars.first(where: { $0.calendarIdentifier == id }) else {
+            die("\(role) calendar id \(id) not found — the account may have been removed "
+                + "and re-added, which changes identifiers. Available: " + availableList())
+        }
+        return c
+    }
+    guard let c = findCalendar(title) else {
+        die("\(role) calendar \"\(title)\" not found. Available: " + availableList())
+    }
+    return c
 }
+
+let source = resolveCalendar(id: SRC_CAL_ID, title: SRC_CAL, role: "source")
+let dest   = resolveCalendar(id: DST_CAL_ID, title: DST_CAL, role: "destination")
 guard source.calendarIdentifier != dest.calendarIdentifier else {
     die("source and destination are the same calendar")
 }
 guard dest.allowsContentModifications else {
-    die("destination calendar \"\(DST_CAL)\" is read-only")
+    die("destination calendar \"\(dest.title)\" is read-only")
 }
 
 // ---------------------------------------------------------------- window

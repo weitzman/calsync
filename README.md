@@ -98,21 +98,36 @@ chmod +x build.sh
 
 Needs Xcode command line tools (`xcode-select --install`).
 
-### 2. Find your calendar names
+### 2. Find your calendar names and ids
 
-They must match exactly what the Calendar app shows in the sidebar. If you get a
-name wrong, `calsync` prints the full list of available calendars and exits,
-which is the easiest way to look them up:
+To look up a calendar's id, run `calsync` with a title that matches nothing —
+it prints every calendar as `"title" (account, id …)` and exits:
 
 ```bash
 SRC_CAL='__nope__' ~/bin/calsync
 ```
 
-Two calendars can share a title — a work account and a local one are both often
-called `Calendar`. `calsync` matches on title and takes the first hit, so rename
-one in Calendar.app if that applies to you. Otherwise the pairing can silently
-flip to the wrong calendar, and an empty source makes the delete pass remove
-every copy.
+```
+ERROR: source calendar "__nope__" not found. Available:
+"Calendar" (Exchange, id 50898AAD-6794-496A-AC50-AF918F470C60),
+"Personal" (iCloud, id 440D9427-CA71-428A-8A05-9AE2C8F66311), …
+```
+
+The id is the UUID after `id`; that is the value for the `_ID` variables. There
+is no way to see it in the Calendar app — it's an EventKit-level identifier —
+so this listing is the lookup. Titles, when you do use them, must match the
+Calendar sidebar exactly.
+
+The same listing is printed whenever a configured title or id fails to resolve,
+so a stale id shows you the current ids for re-pinning.
+
+Prefer
+pinning by identifier (`SRC_CAL_ID`/`DST_CAL_ID`, or `CAL_A_ID`/`CAL_B_ID` for
+the wrapper): titles are neither unique — a work account and the local account
+are both often called `Calendar` — nor stable. Exchange in particular reverts
+renames of its default calendar, which turns a title-pinned mirror into a brick
+days later. When an id is set the title is ignored entirely; identifiers only
+change if the account itself is removed and re-added.
 
 ### 3. Dry run
 
@@ -173,7 +188,12 @@ cp com.weitzman.calsync.plist ~/Library/LaunchAgents/
 P=~/Library/LaunchAgents/com.weitzman.calsync.plist
 /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:CAL_A Work" "$P"
 /usr/libexec/PlistBuddy -c "Set :EnvironmentVariables:CAL_B Personal" "$P"
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:CAL_A_ID string <id-from-step-2>" "$P"
+/usr/libexec/PlistBuddy -c "Add :EnvironmentVariables:CAL_B_ID string <id-from-step-2>" "$P"
 ```
+
+The `_ID` lines are what actually bind the calendars; the titles are then only
+labels for log readability.
 
 ```bash
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.weitzman.calsync.plist
@@ -197,14 +217,17 @@ To reload after editing the plist, bootout then bootstrap again.
 
 All configured via `EnvironmentVariables` in the LaunchAgent.
 
-`mirror.sh` takes the two calendar titles as `CAL_A` and `CAL_B` and sets
-`SRC_CAL`/`DST_CAL` itself, once each way. Everything below is read by the
-engine and can be set alongside them.
+`mirror.sh` takes the two calendar titles as `CAL_A` and `CAL_B` (and their
+identifiers as `CAL_A_ID`/`CAL_B_ID`) and sets `SRC_CAL`/`DST_CAL` and
+`SRC_CAL_ID`/`DST_CAL_ID` itself, once each way. Everything below is read by
+the engine and can be set alongside them.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `SRC_CAL` | `Calendar` | Source calendar title |
 | `DST_CAL` | `Personal` | Destination calendar title |
+| `SRC_CAL_ID` | — | Source calendar identifier; when set, the title is ignored. Prefer for anything scheduled |
+| `DST_CAL_ID` | — | Likewise for the destination |
 | `MIRROR_TITLE` | `Busy` | Title given to every copy |
 | `HORIZON_DAYS` | `14` | How far ahead to look |
 | `SKIP_DECLINED` | `1` | Skip meetings you've declined |
@@ -228,6 +251,22 @@ here.
 being recognised as copies — a `[sync:]` marker lost or rewritten by a server —
 every run re-creates them. Above the limit nothing is committed and the run exits
 non-zero.
+
+### Staleness alarm
+
+A broken mirror is silent: `launchd` keeps firing, every run errors into a log
+nobody reads, and stale copies accumulate. So `mirror.sh` records the time of
+the last fully successful run (in `~/.local/state/calsync/`), and once failures
+have persisted past `STALE_AFTER_MINUTES` (default 60) it posts a macOS
+notification, at most one per `ALERT_EVERY_MINUTES` (default 240). Set
+`STALE_AFTER_MINUTES=0` to disable.
+
+The first notification may need approving under **System Settings ▸
+Notifications** (it arrives attributed to Script Editor). Two blind spots: it
+watches the engine, not `launchd` — if the agent stops being scheduled at all,
+nothing runs, so nothing alerts — and a cancellation that lands while the
+mirror is down, whose event passes before repair, leaves a stale copy that the
+past-preservation rule then keeps; clean those up by hand.
 
 `MAX_DELETES` guards the destructive half. A source read that comes back short —
 a failed fetch, a title that no longer matches — makes copies of events that
