@@ -5,7 +5,8 @@
 //
 // Behaviour:
 //   * Looks HORIZON_DAYS (default 14) into the future, starting now.
-//   * Skips all-day events.
+//   * Skips all-day events, including timed events spanning whole days
+//     (Google's "Out of office" is midnight-to-midnight, not flagged all-day).
 //   * Optionally skips events you've declined.
 //   * Creates a copy in the destination calendar titled "Busy" (no location,
 //     no attendees, no alarms, no notes other than a hidden sync marker).
@@ -284,7 +285,11 @@ var excluded = 0
 
 let sourceEvents: [EKEvent] = store.events(matching: sourcePredicate).filter { ev in
     if ev.isAllDay { return false }
-    guard ev.startDate != nil, ev.endDate != nil else { return false }
+    guard let start = ev.startDate, let end = ev.endDate else { return false }
+    // Google's "Out of office" blocks are timed midnight-to-midnight events,
+    // not flagged all-day. Treat anything spanning whole local days the same.
+    if start == Calendar.current.startOfDay(for: start),
+       end == Calendar.current.startOfDay(for: end) { return false }
     if ev.status == .canceled { return false }
     if SKIP_DECLINED, let me = ev.attendees?.first(where: { $0.isCurrentUser }),
        me.participantStatus == .declined { return false }
