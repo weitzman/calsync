@@ -15,7 +15,9 @@ records exactly which occurrence it came from.
 
 Only the title, start, and end are copied — never the location, attendees,
 notes, or alarms — so no detail from either calendar leaks onto the other. Moves
-follow. Deletions follow. All-day events are ignored.
+follow. Deletions follow. All-day events are ignored — including timed events
+spanning whole midnight-to-midnight days, which is how Google Calendar stores
+"Out of office".
 
 **Both calendars are written to.** If one of them belongs to an employer, note
 that this puts events on their server.
