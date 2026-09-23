@@ -23,8 +23,15 @@ The marker is what makes arbitrary pairings composable:
   don't propagate transitively.
 - A pairing only manages copies carrying its own `SYNC_SCOPE` tag
   (`[sync:<scope>|<key>]`). **Rule: pairings sharing a destination need
-  distinct scopes** — without them, each run deletes the others' copies as
-  orphans. A destination written by only one pairing can go unscoped.
+  distinct scopes.** Knowing an event is a copy isn't enough, because
+  reconciliation also *deletes*: a run removes any managed copy whose key
+  isn't in its source — that's how cancellations propagate. A copy made from
+  another source can never match, so without scopes each run wipes the other
+  pairing's copies as orphans and the next run re-creates them, forever. The
+  key names the source event, not the source calendar, and an orphan's source
+  event is gone — the scope is that missing ownership fact written down. A
+  destination written by only one pairing can go unscoped: ownership is
+  implicit.
 - Scope tags are baked into stored markers; never change one once copies exist.
 
 Unmarked events are never touched, so hand-made entries are safe everywhere.
