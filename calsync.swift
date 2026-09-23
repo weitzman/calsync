@@ -38,6 +38,9 @@
 //   ALLOW_EMPTY_SOURCE
 //                 1 to permit deleting every copy when the source reads empty
 //                 (the "clear the mirror" workflow)  (default 0)
+//   SYNC_SCOPE    short tag isolating this pairing's copies when several
+//                 sources feed one destination; markers become
+//                 "[sync:<scope>|<key>]"             (default none)
 //   DRY_RUN       1 to print actions without writing
 //   VERBOSE       1 for per-event logging
 
@@ -62,6 +65,14 @@ let DST_CAL_ID    = envStr("DST_CAL_ID", "")
 let MIRROR_TITLE  = envStr("MIRROR_TITLE", "Busy")
 let HORIZON_DAYS  = max(1, envInt("HORIZON_DAYS", 14))
 let SKIP_DECLINED = envBool("SKIP_DECLINED", true)
+
+// When several source calendars feed ONE destination, each pairing must only
+// manage its own copies — otherwise every run sees the other pairing's copies
+// as orphans and deletes them. A scope prefixes the stored marker
+// ("[sync:<scope>|<key>]") and the destination scan ignores copies from any
+// other scope (or, when no scope is set, any scoped copy). Single-destination
+// setups need none.
+let SYNC_SCOPE    = envStr("SYNC_SCOPE", "")
 let DRY_RUN       = envBool("DRY_RUN", false)
 let VERBOSE       = envBool("VERBOSE", false)
 
@@ -234,6 +245,19 @@ func extractKey(fromNotes notes: String?) -> String? {
 
 func marker(_ key: String) -> String { "\(MARKER_PREFIX)\(key)\(MARKER_SUFFIX)" }
 
+// The form a key takes inside a stored marker: scope-prefixed when scoped.
+func storedKey(_ key: String) -> String { SYNC_SCOPE.isEmpty ? key : "\(SYNC_SCOPE)|\(key)" }
+
+// The key, if a stored marker belongs to this run's scope; nil for another
+// pairing's copy, which must be left alone.
+func ownKey(fromStored stored: String) -> String? {
+    if let bar = stored.firstIndex(of: "|") {
+        guard String(stored[..<bar]) == SYNC_SCOPE else { return nil }
+        return String(stored[stored.index(after: bar)...])
+    }
+    return SYNC_SCOPE.isEmpty ? stored : nil
+}
+
 // The part of a key in front of its occurrence stamp. Identifiers can contain
 // "@" (Google-backed calendars use "…@google.com"), so split at the last one,
 // and only when what follows really is a stamp.
@@ -335,7 +359,8 @@ var existing: [String: [EKEvent]] = [:]
 var rekeyed = 0
 for ev in store.events(matching: destPredicate) {
     guard let raw = extractKey(fromNotes: ev.notes) else { continue }  // leave hand-made events alone
-    var k = normalizeKey(raw)
+    guard let own = ownKey(fromStored: raw) else { continue }          // another pairing's copy
+    var k = normalizeKey(own)
     if wanted[k] == nil, let moved = wantedByBase[baseOf(k)], moved != k {
         k = moved
         rekeyed += 1
@@ -397,7 +422,7 @@ for (key, src) in wanted {
         copy.startDate  = src.startDate
         copy.endDate    = src.endDate
         copy.isAllDay   = false
-        copy.notes      = marker(key)
+        copy.notes      = marker(storedKey(key))
         copy.alarms     = nil
         copy.availability = desiredAvailability(for: src, fallback: copy.availability)
         vlog("create  \(stamp.string(from: src.startDate)) -> \(MIRROR_TITLE)")
@@ -419,7 +444,7 @@ for (key, src) in wanted {
     if !sameInstant(keeper.endDate, src.endDate)     { keeper.endDate   = src.endDate;   dirty = true }
     if keeper.title != MIRROR_TITLE                  { keeper.title     = MIRROR_TITLE;  dirty = true }
     if keeper.isAllDay                               { keeper.isAllDay  = false;         dirty = true }
-    if keeper.notes != marker(key)                   { keeper.notes     = marker(key);   dirty = true }
+    if keeper.notes != marker(storedKey(key))        { keeper.notes     = marker(storedKey(key)); dirty = true }
     let wantAvailability = desiredAvailability(for: src, fallback: keeper.availability)
     if keeper.availability != wantAvailability { keeper.availability = wantAvailability; dirty = true }
 

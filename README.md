@@ -27,6 +27,13 @@ swapped. They do not interfere: every copy carries a `[sync:]` marker, and each
 direction ignores marked events when reading its source, so neither re-mirrors
 the other's output.
 
+Optionally, a third calendar (`CAL_C`) receives one-way mirrors of *both* A and
+B — nothing ever syncs back out of it. Two pairings sharing one destination
+would normally delete each other's copies as orphans, so each carries a
+`SYNC_SCOPE` tag inside its markers (`[sync:a2c|<key>]`) and manages only its
+own. The tags are baked into stored markers; never change them once copies
+exist.
+
 ## Why it's built this way
 
 macOS Shortcuts has no short-interval trigger — the built-in automations top out
@@ -237,6 +244,7 @@ the engine and can be set alongside them.
 | `MAX_CREATES` | `60` | Abort without writing if one run would create more copies than this; `0` disables |
 | `MAX_DELETES` | `60` | Same, for deletions; `0` disables |
 | `ALLOW_EMPTY_SOURCE` | `0` | `1` to permit deleting every copy when the source reads empty |
+| `SYNC_SCOPE` | — | Short tag isolating this pairing's copies when several sources feed one destination (`mirror.sh` sets `a2c`/`b2c` for `CAL_C`) |
 | `DRY_RUN` | `0` | Print actions, write nothing |
 | `VERBOSE` | `0` | Log every event |
 

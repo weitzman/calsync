@@ -7,6 +7,8 @@
 # in the repository.
 #
 # Required:  CAL_A, CAL_B         the two calendar titles
+# Optional:  CAL_C, CAL_C_ID      a third calendar that A and B are mirrored
+#                                 INTO, one-way; nothing syncs back out of it
 # Optional:  CAL_A_ID, CAL_B_ID   calendar identifiers; when set, the matching
 #                                 title is ignored. Prefer these: titles are
 #                                 neither stable (Exchange reverts renames of
@@ -24,6 +26,8 @@ set -u
 : "${CAL_B:?CAL_B must be set to a calendar title}"
 CAL_A_ID="${CAL_A_ID:-}"
 CAL_B_ID="${CAL_B_ID:-}"
+CAL_C="${CAL_C:-}"
+CAL_C_ID="${CAL_C_ID:-}"
 
 BIN="${CALSYNC_BIN:-$HOME/bin/calsync}"
 
@@ -38,6 +42,16 @@ rc=0
 # the whole mirror. A non-zero exit surfaces in the agent's StandardErrorPath.
 SRC_CAL="$CAL_A" SRC_CAL_ID="$CAL_A_ID" DST_CAL="$CAL_B" DST_CAL_ID="$CAL_B_ID" "$BIN" || rc=1
 SRC_CAL="$CAL_B" SRC_CAL_ID="$CAL_B_ID" DST_CAL="$CAL_A" DST_CAL_ID="$CAL_A_ID" "$BIN" || rc=1
+
+# Optional third calendar: A and B are additionally mirrored ONE-WAY into C.
+# Both pairings share C as a destination, so each carries its own SYNC_SCOPE —
+# without one, each run would delete the other pairing's copies as orphans.
+# Nothing is ever read out of C. The scope tags are baked into stored markers;
+# never change them once copies exist.
+if [ -n "$CAL_C$CAL_C_ID" ]; then
+  SRC_CAL="$CAL_A" SRC_CAL_ID="$CAL_A_ID" DST_CAL="$CAL_C" DST_CAL_ID="$CAL_C_ID" SYNC_SCOPE=a2c "$BIN" || rc=1
+  SRC_CAL="$CAL_B" SRC_CAL_ID="$CAL_B_ID" DST_CAL="$CAL_C" DST_CAL_ID="$CAL_C_ID" SYNC_SCOPE=b2c "$BIN" || rc=1
+fi
 
 # ---- staleness alarm -------------------------------------------------------
 # A broken mirror is silent: launchd keeps firing, every run errors into a log
