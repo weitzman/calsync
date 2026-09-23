@@ -1,38 +1,42 @@
-# calsync — two-way calendar mirror (macOS)
+# calsync — calendar mirror (macOS)
 
-Bidirectional sync between two calendars. Every 10 minutes, timed events for the
-next 2 weeks are mirrored **both ways** — say a work calendar and a personal
-one:
+One-way mirroring between Mac calendars. Each run of the binary syncs a single
+source → destination pairing; any topology is a list of such pairings, run one
+after another on a schedule:
 
-| Direction | Copies appear as |
-|---|---|
-| `Work` → `Personal` | **Busy** |
-| `Personal` → `Work` | **Busy** |
+- **Two-way mirror** = the same pair, both directions.
+- **Fan-in** = several sources into one destination (a "busy" aggregate).
+- **Fan-out** = one source into several destinations.
+- Any mix of the above.
 
-Copies are titled `Busy` in both directions. Direction is still unambiguous — a
-copy always lives in the calendar opposite its source — and the `[sync:]` marker
-records exactly which occurrence it came from.
+Copies are titled `Busy` (`MIRROR_TITLE`). Only the title, start, and end are
+copied — never the location, attendees, notes, or alarms — so no detail from
+any calendar leaks onto another. Moves follow. Deletions follow. All-day events
+are ignored — including timed events spanning whole midnight-to-midnight days,
+which is how Google Calendar stores "Out of office".
 
-Only the title, start, and end are copied — never the location, attendees,
-notes, or alarms — so no detail from either calendar leaks onto the other. Moves
-follow. Deletions follow. All-day events are ignored — including timed events
-spanning whole midnight-to-midnight days, which is how Google Calendar stores
-"Out of office".
+Every copy carries a `[sync:]` marker tying it to its exact source occurrence.
+The marker is what makes arbitrary pairings composable:
 
-**Both calendars are written to.** If one of them belongs to an employer, note
-that this puts events on their server.
+- A pairing never mirrors a marked event, so copies don't re-mirror. That is
+  why two-way is just two one-way runs that don't feed back, and why chains
+  don't propagate transitively.
+- A pairing only manages copies carrying its own `SYNC_SCOPE` tag
+  (`[sync:<scope>|<key>]`). **Rule: pairings sharing a destination need
+  distinct scopes** — without them, each run deletes the others' copies as
+  orphans. A destination written by only one pairing can go unscoped.
+- Scope tags are baked into stored markers; never change one once copies exist.
 
-Each direction runs as a separate invocation with `SRC_CAL` and `DST_CAL`
-swapped. They do not interfere: every copy carries a `[sync:]` marker, and each
-direction ignores marked events when reading its source, so neither re-mirrors
-the other's output.
+Unmarked events are never touched, so hand-made entries are safe everywhere.
 
-Optionally, a third calendar (`CAL_C`) receives one-way mirrors of *both* A and
-B — nothing ever syncs back out of it. Two pairings sharing one destination
-would normally delete each other's copies as orphans, so each carries a
-`SYNC_SCOPE` tag inside its markers (`[sync:a2c|<key>]`) and manages only its
-own. The tags are baked into stored markers; never change them once copies
-exist.
+**Destinations are written to.** If one belongs to an employer, note that this
+puts events on their server.
+
+`mirror.sh` is a convenience wrapper for this machine's topology — a two-way
+pair (`CAL_A` ↔ `CAL_B`) plus an optional aggregate (`CAL_C`) both feed
+one-way, scoped `a2c`/`b2c`. A different topology is just different
+invocations of the binary; nothing in the engine knows about the wrapper's
+shape.
 
 ## Why it's built this way
 
