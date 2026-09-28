@@ -282,6 +282,14 @@ have persisted past `STALE_AFTER_MINUTES` (default 60) it posts a macOS
 notification, at most one per `ALERT_EVERY_MINUTES` (default 240). Set
 `STALE_AFTER_MINUTES=0` to disable.
 
+A pairing whose calendar is **unavailable** — its account toggled off in
+Calendar, say while travelling — does not count as failing. `calsync` exits 2
+in that case and the wrapper logs the pairing as *paused* instead: no alarm,
+and it resumes on its own once the calendar is back. Caveat: if the account
+returns with a **new** identifier (remove + re-add does this), the pairing
+stays silently paused until the id is re-pinned — after re-enabling an
+account, check `/tmp/calsync.log` shows the pairing running again.
+
 The first notification may need approving under **System Settings ▸
 Notifications** (it arrives attributed to Script Editor). Two blind spots: it
 watches the engine, not `launchd` — if the agent stops being scheduled at all,
