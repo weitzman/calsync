@@ -118,9 +118,14 @@ func log(_ msg: String) {
     fflush(stdout)
 }
 func vlog(_ msg: String) { if VERBOSE { log(msg) } }
-func die(_ msg: String) -> Never {
+// Exit 2 marks "a calendar is unavailable" — an account toggled off, not a
+// malfunction. mirror.sh treats it as a paused pairing rather than a failure,
+// so the staleness alarm stays quiet while an account is deliberately disabled.
+let EXIT_CAL_UNAVAILABLE: Int32 = 2
+
+func die(_ msg: String, code: Int32 = 1) -> Never {
     FileHandle.standardError.write("\(stamp.string(from: Date())) ERROR: \(msg)\n".data(using: .utf8)!)
-    exit(1)
+    exit(code)
 }
 
 // ---------------------------------------------------------------- authorization
@@ -177,12 +182,14 @@ func resolveCalendar(id: String, title: String, role: String) -> EKCalendar {
     if !id.isEmpty {
         guard let c = allCalendars.first(where: { $0.calendarIdentifier == id }) else {
             die("\(role) calendar id \(id) not found — the account may have been removed "
-                + "and re-added, which changes identifiers. Available: " + availableList())
+                + "and re-added, which changes identifiers. Available: " + availableList(),
+                code: EXIT_CAL_UNAVAILABLE)
         }
         return c
     }
     guard let c = findCalendar(title) else {
-        die("\(role) calendar \"\(title)\" not found. Available: " + availableList())
+        die("\(role) calendar \"\(title)\" not found. Available: " + availableList(),
+            code: EXIT_CAL_UNAVAILABLE)
     }
     return c
 }

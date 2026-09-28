@@ -38,10 +38,24 @@ fi
 
 rc=0
 
-# Each direction runs even if the other fails, so one bad server doesn't stall
-# the whole mirror. A non-zero exit surfaces in the agent's StandardErrorPath.
-SRC_CAL="$CAL_A" SRC_CAL_ID="$CAL_A_ID" DST_CAL="$CAL_B" DST_CAL_ID="$CAL_B_ID" "$BIN" || rc=1
-SRC_CAL="$CAL_B" SRC_CAL_ID="$CAL_B_ID" DST_CAL="$CAL_A" DST_CAL_ID="$CAL_A_ID" "$BIN" || rc=1
+# Runs one pairing. Exit 2 from calsync means a calendar is unavailable — an
+# account deliberately toggled off in Calendar, not a malfunction — so that
+# pairing is PAUSED: noted in the log, but it neither fails the run nor wakes
+# the staleness alarm. It resumes by itself once the calendar is back. Any
+# other non-zero exit is a real failure. Each pairing runs even if another
+# fails, so one bad server doesn't stall the whole mirror.
+sync_pair() {
+  local label=$1; shift
+  env "$@" "$BIN"
+  case $? in
+    0) ;;
+    2) echo "calsync: $label paused — calendar unavailable" ;;
+    *) rc=1 ;;
+  esac
+}
+
+sync_pair "A->B" SRC_CAL="$CAL_A" SRC_CAL_ID="$CAL_A_ID" DST_CAL="$CAL_B" DST_CAL_ID="$CAL_B_ID"
+sync_pair "B->A" SRC_CAL="$CAL_B" SRC_CAL_ID="$CAL_B_ID" DST_CAL="$CAL_A" DST_CAL_ID="$CAL_A_ID"
 
 # Optional third calendar: A and B are additionally mirrored ONE-WAY into C.
 # Both pairings share C as a destination, so each carries its own SYNC_SCOPE —
@@ -49,8 +63,8 @@ SRC_CAL="$CAL_B" SRC_CAL_ID="$CAL_B_ID" DST_CAL="$CAL_A" DST_CAL_ID="$CAL_A_ID" 
 # Nothing is ever read out of C. The scope tags are baked into stored markers;
 # never change them once copies exist.
 if [ -n "$CAL_C$CAL_C_ID" ]; then
-  SRC_CAL="$CAL_A" SRC_CAL_ID="$CAL_A_ID" DST_CAL="$CAL_C" DST_CAL_ID="$CAL_C_ID" SYNC_SCOPE=a2c "$BIN" || rc=1
-  SRC_CAL="$CAL_B" SRC_CAL_ID="$CAL_B_ID" DST_CAL="$CAL_C" DST_CAL_ID="$CAL_C_ID" SYNC_SCOPE=b2c "$BIN" || rc=1
+  sync_pair "A->C" SRC_CAL="$CAL_A" SRC_CAL_ID="$CAL_A_ID" DST_CAL="$CAL_C" DST_CAL_ID="$CAL_C_ID" SYNC_SCOPE=a2c
+  sync_pair "B->C" SRC_CAL="$CAL_B" SRC_CAL_ID="$CAL_B_ID" DST_CAL="$CAL_C" DST_CAL_ID="$CAL_C_ID" SYNC_SCOPE=b2c
 fi
 
 # ---- staleness alarm -------------------------------------------------------
