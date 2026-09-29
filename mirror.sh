@@ -38,6 +38,9 @@ fi
 
 rc=0
 
+# One header per wrapper run so the log reads as blocks, not a wall of lines.
+echo "===== $(date '+%Y-%m-%d %H:%M:%S') ====="
+
 # Runs one pairing. Exit 2 from calsync means a calendar is unavailable — an
 # account deliberately toggled off in Calendar, not a malfunction — so that
 # pairing is PAUSED: noted in the log, but it neither fails the run nor wakes
@@ -72,8 +75,8 @@ fi
 # nobody reads, and stale copies accumulate (this happened — an Exchange title
 # revert killed every run for two days). So track the last fully successful
 # run, and when failures have persisted past STALE_AFTER_MINUTES, say so with
-# a macOS notification. Throttled: a dead mirror on a 10-minute cadence should
-# alert, not nag.
+# an alert dialog offering to open the log. Throttled: a dead mirror on a
+# 10-minute cadence should alert, not nag.
 #
 # This watches the engine, not launchd itself — if the agent stops being
 # scheduled at all, nothing runs, so nothing alerts.
@@ -101,8 +104,16 @@ elif [ "$STALE_AFTER_MINUTES" -gt 0 ]; then
     else
       age_text="failing for $stale_min minutes"
     fi
-    osascript -e "display notification \"Sync has been $age_text. See /tmp/calsync.err.log\" with title \"calsync stale\" sound name \"Basso\"" \
-      && echo "$now" > "$STATE_DIR/last-alert"
+    # An alert dialog rather than a banner: banners posted from a script are
+    # not clickable, a dialog can offer "Open log". It gives up after 10
+    # minutes so a hung dialog never wedges the agent, and the throttle stamp
+    # is written first so a waiting dialog can't pile up siblings.
+    echo "$now" > "$STATE_DIR/last-alert"
+    afplay /System/Library/Sounds/Basso.aiff 2>/dev/null
+    osascript >/dev/null 2>&1 <<OSA
+set r to display alert "calsync stale" message "Sync has been $age_text." buttons {"Dismiss", "Open log"} default button "Open log" giving up after 600
+if button returned of r is "Open log" then do shell script "open /tmp/calsync.err.log"
+OSA
   fi
 fi
 
