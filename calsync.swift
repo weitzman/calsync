@@ -173,22 +173,30 @@ func findCalendar(_ title: String) -> EKCalendar? {
 // could silently bind the wrong calendar, and an empty or wrong source is how
 // every copy gets deleted. Identifiers do die with an account remove/re-add;
 // the error prints the current ids for re-pinning.
+// The full calendar list exists for interactive re-pinning; from launchd it is
+// pure noise, re-printed every interval into a log nobody can then read. So it
+// only appears when stderr is a terminal — one line per calendar, which is also
+// easier to scan than the old comma-run.
 func availableList() -> String {
-    allCalendars.map { "\"\($0.title)\" (\($0.source.title), id \($0.calendarIdentifier))" }
-        .joined(separator: ", ")
+    guard isatty(STDERR_FILENO) != 0 else {
+        return "(run from Terminal for the calendar list)"
+    }
+    return "Available:\n" + allCalendars
+        .map { "  \"\($0.title)\" (\($0.source.title), id \($0.calendarIdentifier))" }
+        .joined(separator: "\n")
 }
 
 func resolveCalendar(id: String, title: String, role: String) -> EKCalendar {
     if !id.isEmpty {
         guard let c = allCalendars.first(where: { $0.calendarIdentifier == id }) else {
             die("\(role) calendar id \(id) not found — the account may have been removed "
-                + "and re-added, which changes identifiers. Available: " + availableList(),
+                + "and re-added, which changes identifiers. " + availableList(),
                 code: EXIT_CAL_UNAVAILABLE)
         }
         return c
     }
     guard let c = findCalendar(title) else {
-        die("\(role) calendar \"\(title)\" not found. Available: " + availableList(),
+        die("\(role) calendar \"\(title)\" not found. " + availableList(),
             code: EXIT_CAL_UNAVAILABLE)
     }
     return c
